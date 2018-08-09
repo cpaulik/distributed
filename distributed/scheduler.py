@@ -52,6 +52,11 @@ from .stealing import WorkStealing
 from .variable import VariableExtension
 
 
+########## Memory debugging
+
+import objgraph
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -1083,6 +1088,7 @@ class Scheduler(ServerNode):
                 logger.info("%11s at: %25s", k, '%s:%d' % (listen_ip, v.port))
 
             self.loop.add_callback(self.reevaluate_occupancy)
+            self.loop.add_callback(self.count_objgraphs)
 
         if self.scheduler_file:
             with open(self.scheduler_file, 'w') as f:
@@ -1101,6 +1107,20 @@ class Scheduler(ServerNode):
         setproctitle("dask-scheduler [%s]" % (self.address,))
 
         return self.finished()
+
+    def count_objgraphs(self):
+        last = time()
+        logger.info("Most Common Types:")
+        most_common_types = objgraph.most_common_types()
+        for t, count in most_common_types:
+            logger.info("Object Type: {} : {}".format(t, count))
+        logger.info("Growth:")
+        growing_objs = objgraph.growth()
+        for t, count, inc in growing_objs:
+            logger.info("Object Type: {} growing by {}".format(t, inc))
+
+        next_time = timedelta(seconds=60)
+        self.loop.add_timeout(next_time, self.count_objgraphs)
 
     @gen.coroutine
     def finished(self):
